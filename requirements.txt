@@ -1,0 +1,11 @@
+nba_api==1.6.1
+pandas>=2.2.3
+numpy>=1.26.4
+google.cloud>=0.34.0
+psycopg2>=2.9.10
+psycopg2-binary>=2.9.10  # PostgreSQL database adapter for Python
+python-dotenv>=1.0.0    # Loads environment variables from .env files
+black>=24.10.0  # Python code formatter
+pre-commit>=4.0.1  # Pre-commit hook manager
+typing>=3.7.4.3  # Type hints for Python
+tqdm==4.67.1
