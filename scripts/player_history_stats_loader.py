@@ -10,7 +10,7 @@ from tqdm import tqdm
 from utils import (
     COLUMN_MAPPING,
     create_tables,
-    db_connection,
+    connect_database,
     insert_game_stats_data,
     insert_player_data,
     insert_team_data,
@@ -99,7 +99,7 @@ def main():
     """Main entry point."""
     try:
         create_tables()
-        db = db_connection()
+        db = connect_database()
 
         season = "2023-24"
         game_log = LeagueGameLog(season=season)
@@ -107,25 +107,22 @@ def main():
         game_ids = games["GAME_ID"].unique()
 
         # Process games with progress bar
-        with db:
-            for game_id in tqdm(game_ids, desc=f"Processing {season} games"):
-                teams_df, players_df, stats_df = fetch_stats_for_game(game_id, season)
+        for game_id in tqdm(game_ids, desc=f"Processing {season} games"):
+            teams_df, players_df, stats_df = fetch_stats_for_game(game_id, season)
 
-                with db.cursor() as cursor:
-                    # Insert teams data
-                    if not teams_df.empty():
-                        insert_team_data(teams_df)
+            if not teams_df.empty():
+                insert_team_data(db, teams_df)
 
-                    # Insert players data
-                    if not players_df.empty():
-                        insert_player_data(players_df)
+            # Insert players data
+            if not players_df.empty():
+                insert_player_data(db, players_df)
 
-                    # Insert game stats data
-                    if not stats_df.empty():
-                        insert_game_stats_data(stats_df)
+            # Insert game stats data
+            if not stats_df.empty():
+                insert_game_stats_data(db, stats_df)
 
-            else:
-                logging.warning("No valid game data found")
+        else:
+            logging.warning("No valid game data found")
 
     except Exception as e:
         logging.error(f"Database error: {str(e)}")

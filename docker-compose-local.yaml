@@ -14,47 +14,50 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data # Persist database data
       - ./init-scripts/init.sql:/docker-entrypoint-initdb.d/init.sql # Mount initialization scripts
-
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres_user -d fantasy_survivors"]
+      interval: 2s
+      timeout: 10s
+      retries: 5
 
   # Service for loading historical player statistics
-  # history_stats_loader:
-  #   # Build container using Python Dockerfile
+  history_stats_loader:
+    build:
+      context: .
+      dockerfile: Dockerfile.history
+    working_dir: /app
+    volumes:
+      - ./scripts:/app/scripts
+    # Ensure database is started before this service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Configure database connection string
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres_user
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: fantasy_survivors
+    command: python ./scripts/player_history_stats_loader.py
+
+  # Service for loading daily player statistics
+  # daily_loader:
   #   build:
   #     context: .
-  #     dockerfile: Dockerfile.history-data
-  #   # Mount scripts directory into container
-  #   working_dir: /app
-  #   volumes:
-  #     - ./scripts:/app/scripts
-  #   # Ensure database is started before this service
+  #     dockerfile: Dockerfile.crontab
   #   depends_on:
-  #     - postgres
-  #   # Configure database connection string
+  #     postgres:
+  #       condition: service_healthy
   #   environment:
   #     POSTGRES_HOST: postgres
+  #     POSTGRES_PORT: 5432
   #     POSTGRES_USER: postgres_user
   #     POSTGRES_PASSWORD: postgres_password
   #     POSTGRES_DB: fantasy_survivors
-  #   # Run the history stats loader script
-  #   command: python ./scripts/player_history_stats_loader.py
-
-  # # Service for loading daily player statistics
-  # daily_stats_loader:
-  #   # Build container using Python Dockerfile
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.python
-  #   # Mount scripts directory into container
   #   volumes:
   #     - ./scripts:/app/scripts
-  #   # Ensure database is started before this service
-  #   depends_on:
-  #     - database
-  #   # Configure database connection string
-  #   environment:
-  #     DATABASE_URL: postgresql://postgres:postgres@database:5432/fantasy_survivors
-  #   # Run the daily stats loader script
-  #   command: python ./scripts/player_daily_stats_loader.py
+  #   command: ./run-crontab.sh
 
 # Define named volumes used by services
 volumes:
