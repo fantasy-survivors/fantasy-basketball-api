@@ -30,20 +30,20 @@ case "$1" in
     "up")
         check_docker
         echo -e "${GREEN}Starting services...${NC}"
-        docker compose -f docker-compose-local.yaml up --build -d
+        docker compose --env-file ./.env.local -f docker-compose-local.yaml up --build -d
         ;;
     "down")
         check_docker
-        remove -rf /postgres_data
+        rm -rf postgres_data
         echo -e "${GREEN}Stopping services...${NC}"
-        docker compose -f docker-compose-local.yaml down
+        docker compose --env-file ./.env.local -f docker-compose-local.yaml down -v
         ;;
     "restart")
         check_docker
         echo -e "${GREEN}Restarting services...${NC}"
-        remove -rf /postgres_data
-        docker compose -f docker-compose-local.yaml down
-        docker compose -f docker-compose-local.yaml up --build -d
+        rm -rf postgres_data
+        ./docker-compose.sh down
+        ./docker-compose.sh up
         ;;
     "logs")
         check_docker

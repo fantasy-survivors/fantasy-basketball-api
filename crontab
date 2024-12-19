@@ -1,0 +1,3 @@
+# cronjob -> command -> log in stdout -> log in stderr
+* * * * * /usr/local/bin/python /app/scripts/player_daily_stats_loader.py > /proc/1/fd/1 2>/proc/1/fd/2
+# EOL

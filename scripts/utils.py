@@ -1,8 +1,15 @@
-# Move column mapping to a constant at module level
-import os
+from typing import Tuple, Optional
+import pandas as pd
+from nba_api.stats.endpoints import BoxScoreTraditionalV2
+import time
 import logging
-import psycopg2
-from psycopg2.extensions import connection
+
+# Configure logging with more concise format
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 COLUMN_MAPPING = {
     "SEASON": "season",
@@ -38,156 +45,79 @@ COLUMN_MAPPING = {
 }
 
 
-def connect_database():
-    """Create a database connection."""
-    host = os.getenv("POSTGRES_HOST")
-    port = os.getenv("POSTGRES_PORT")
-    user = os.getenv("POSTGRES_USER")
-    password = os.getenv("POSTGRES_PASSWORD")
-    dbname = os.getenv("POSTGRES_DB")
-
-    print(host, port, user, password, dbname)
-    return psycopg2.connect(
-        host=host, port=port, user=user, password=password, dbname=dbname
-    )
+def calculate_double_triple_double(row: pd.Series) -> Tuple[bool, bool]:
+    """Calculate if player achieved double-double or triple-double."""
+    stats = [row["PTS"], row["REB"], row["AST"], row["BLK"], row["STL"]]
+    doubles = sum(x >= 10 for x in stats)
+    return doubles >= 2, doubles >= 3
 
 
-def create_tables():
-    """Create tables in the database."""
-    conn = connect_database()
-    cursor = conn.cursor()
+def fetch_stats_for_game(
+    game_id: str, season: str, timeout: int = 30
+) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    """Fetch and process stats for a single game."""
+    try:
+        # Rate limiting
+        time.sleep(1)
 
-    logging.info("Connected to database")
+        # Fetch box score data
+        box_score = BoxScoreTraditionalV2(game_id=game_id, timeout=timeout)
+        result = box_score.get_dict()["resultSets"][0]
+        game_df = pd.DataFrame(result["rowSet"], columns=result["headers"])
 
-    # Create tables if they don't exist
-    tables = [
-        """
-        CREATE TABLE IF NOT EXISTS teams (
-            id INTEGER PRIMARY KEY,
-            name VARCHAR(100)
-        );
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS players (
-            id INTEGER PRIMARY KEY,
-            team_id INTEGER REFERENCES teams(id),
-            name VARCHAR(100),
-            starting_position VARCHAR(10),
-            comment TEXT
-        );
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS player_history_stats (
-            id SERIAL PRIMARY KEY,
-            season VARCHAR(10),
-            game_id INTEGER,
-            player_id INTEGER REFERENCES players(id),
-            minute FLOAT,
-            fg_made INTEGER,
-            fg_attempts INTEGER,
-            fg_pct FLOAT,
-            three_p_made INTEGER,
-            three_p_attempts INTEGER,
-            three_p_pct FLOAT,
-            ft_made INTEGER,
-            ft_attempts INTEGER,
-            ft_pct FLOAT,
-            offensive_rebounds INTEGER,
-            defensive_rebounds INTEGER,
-            rebounds INTEGER,
-            assists INTEGER,
-            steals INTEGER,
-            blocks INTEGER,
-            turnovers INTEGER,
-            personal_fouls INTEGER,
-            points INTEGER,
-            plus_minus FLOAT,
-            double_double BOOLEAN,
-            triple_double BOOLEAN
-        );
-        """,
-    ]
+        if game_df.empty:
+            return None, None, None
 
-    for table in tables:
-        cursor.execute(table)
+        # Add metadata columns
+        game_df["SEASON"] = season
+        game_df[["GAME_ID", "TEAM_ID", "PLAYER_ID"]] = game_df[
+            ["GAME_ID", "TEAM_ID", "PLAYER_ID"]
+        ].apply(pd.to_numeric)
 
-    conn.commit()
-    logging.info("Database tables ready")
-
-
-def insert_team_data(db: connection, teams_df):
-    """Insert team data into the database."""
-    cursor = db.cursor()
-    for _, team in teams_df.iterrows():
-        cursor.execute(
-            """
-            INSERT INTO teams (id, name) 
-            VALUES (%s, %s)
-            ON CONFLICT (id) DO NOTHING
-            """,
-            (team["TEAM_ID"], team["TEAM_ABBREVIATION"]),
+        # Process minutes played
+        game_df["MIN"] = pd.to_numeric(
+            game_df["MIN"].str.split(":").str[0], errors="coerce"
         )
-    db.commit()
 
+        # Fill NaN values with 0
+        game_df = game_df.fillna(0)
 
-def insert_player_data(db: connection, players_df):
-    """Insert player data into the database."""
-    cursor = db.cursor()
-    for _, player in players_df.iterrows():
-        cursor.execute(
-            """
-            INSERT INTO players (id, name, starting_position, comment)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (id) DO NOTHING
-            """,
-            (
-                player["PLAYER_ID"],
-                player["PLAYER_NAME"],
-                player["START_POSITION"],
-                player["COMMENT"],
-            ),
+        # Calculate achievements
+        game_df[["DOUBLE_DOUBLE", "TRIPLE_DOUBLE"]] = pd.DataFrame(
+            [calculate_double_triple_double(row) for _, row in game_df.iterrows()],
+            index=game_df.index,
         )
-    db.commit()
+
+        # Split into separate dataframes
+        team_cols = ["TEAM_ID", "TEAM_ABBREVIATION"]
+        player_cols = [
+            "PLAYER_ID",
+            "TEAM_ID",
+            "PLAYER_NAME",
+            "START_POSITION",
+            "COMMENT",
+        ]
+        game_cols = [col for col in COLUMN_MAPPING.keys()]
+
+        team_df = game_df[team_cols].drop_duplicates()
+        player_df = game_df[player_cols].drop_duplicates()
+        game_stats_df = game_df[game_cols]
+
+        # Rename columns
+        team_df.rename(columns=COLUMN_MAPPING)
+        player_df.rename(columns=COLUMN_MAPPING)
+        game_stats_df.rename(columns=COLUMN_MAPPING)
+
+        return team_df, player_df, game_stats_df
+
+    except Exception as e:
+        logging.error(f"Error fetching game {game_id}: {str(e)}")
+        return None, None, None
 
 
-def insert_game_stats_data(db: connection, stats_df):
-    """Insert game stats data into the database."""
-    cursor = db.cursor()
-    for _, stat in stats_df.iterrows():
-        cursor.execute(
-            """
-            INSERT INTO player_history_stats (
-            season, game_id, player_id, minute, fg_made, fg_attempts,
-            fg_pct, three_p_made, three_p_attempts, three_p_pct,
-            ft_made, ft_attempts, ft_pct, offensive_rebounds,
-            defensive_rebounds, rebounds, assists, steals, blocks,
-            turnovers, personal_fouls, points, plus_minus,
-            double_double, triple_double
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-            )
-            """,
-            (
-                stat["SEASON"],
-                stat["GAME_ID"],
-                stat["PLAYER_ID"],
-                stat["MIN"],
-                stat["FGM"],
-                stat["FGA"],
-                stat["FG_PCT"],
-                stat["FG3M"],
-                stat["FG3A"],
-                stat["FG3_PCT"],
-                stat["FTM"],
-                stat["FTA"],
-                stat["FT_PCT"],
-                stat["TO"],
-                stat["PF"],
-                stat["PTS"],
-                stat["PLUS_MINUS"],
-                stat["DOUBLE_DOUBLE"],
-                stat["TRIPLE_DOUBLE"],
-            ),
-        )
-    db.commit()
+# # Get **all** the games so we can filter to an individual GAME_ID
+# result = leaguegamefinder.LeagueGameFinder()
+# all_games = result.get_data_frames()[0]
+# # Find the game_id we want
+# full_game = all_games[all_games.GAME_ID == game_id]
+# full_game

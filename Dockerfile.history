@@ -10,9 +10,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY scripts/ ./scripts/
 
 ENV PYTHONUNBUFFERED=1
-ENV POSTGRES_HOST=postgres
-ENV POSTGRES_USER=postgres_user
-ENV POSTGRES_PASSWORD=postgres_password
-ENV POSTGRES_DB=fantasy_survivors
 
 CMD ["python", "./scripts/player_history_stats_loader.py"]

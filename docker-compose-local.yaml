@@ -3,11 +3,11 @@ version: "3.8"
 services:
   # PostgreSQL database service
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine     
     environment:
-      POSTGRES_USER: postgres_user
-      POSTGRES_PASSWORD: postgres_password
-      POSTGRES_DB: fantasy_survivors
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - 5432:5432
     # Configure persistent storage and initialization scripts
@@ -15,7 +15,7 @@ services:
       - postgres_data:/var/lib/postgresql/data # Persist database data
       - ./init-scripts/init.sql:/docker-entrypoint-initdb.d/init.sql # Mount initialization scripts
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres_user -d fantasy_survivors"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 2s
       timeout: 10s
       retries: 5
@@ -25,45 +25,41 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.history
+    image: fantasy_survivors:history
     working_dir: /app
-    volumes:
-      - ./scripts:/app/scripts
-    # Ensure database is started before this service
     depends_on:
       postgres:
-        condition: service_healthy
-    # Configure database connection string
+        condition: service_healthy     
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_USER: postgres_user
-      POSTGRES_PASSWORD: postgres_password
-      POSTGRES_DB: fantasy_survivors
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./scripts:/app/scripts
     command: python ./scripts/player_history_stats_loader.py
 
   # Service for loading daily player statistics
-  # daily_loader:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.crontab
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   environment:
-  #     POSTGRES_HOST: postgres
-  #     POSTGRES_PORT: 5432
-  #     POSTGRES_USER: postgres_user
-  #     POSTGRES_PASSWORD: postgres_password
-  #     POSTGRES_DB: fantasy_survivors
-  #   volumes:
-  #     - ./scripts:/app/scripts
-  #   command: ./run-crontab.sh
+  daily_loader:
+    build:
+      context: .
+      dockerfile: Dockerfile.crontab
+    image: fantasy_survivors:daily
+    depends_on:
+      postgres:
+        condition: service_healthy     
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./scripts:/app/scripts
+    command: ./start-crontab.sh
 
-# Define named volumes used by services
 volumes:
-  # Volume for persisting PostgreSQL data
   postgres_data:
 
-## some commands to check the volumes
-# docker volume ls
-# docker volume inspect postgres_data
+  
