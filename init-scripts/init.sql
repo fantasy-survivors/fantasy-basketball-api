@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS player_history_stats (
 );
 
 
+
+-- TODO
 -- Create games table
 -- game_id
 -- date
