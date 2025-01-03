@@ -47,3 +47,9 @@ CREATE TABLE IF NOT EXISTS player_history_stats (
     double_double BOOLEAN,
     triple_double BOOLEAN
 );
+
+
+-- Create games table
+-- game_id
+-- date
+-- state
