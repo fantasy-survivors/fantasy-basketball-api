@@ -1,0 +1,42 @@
+name: Postgres init tests
+
+on: 
+  pull_request:
+  push:
+    branches: 
+      - main
+
+jobs:
+  postgres-test:
+    name: Postgres Test
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_USER: postgres_user
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: fantasy_survivors
+    permissions:
+      contents: "read"
+      id-token: "write"
+    services: 
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        volumes:
+          - ./init-scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+    
+      - name: Print Services
+        run: service --status-all
