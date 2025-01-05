@@ -16,7 +16,7 @@ jobs:
       POSTGRES_DB: fantasy_survivors
     permissions:
       contents: "read"
-      id-tokens: "write"
+      id-token: "write"
     services: 
       postgres:
         image: postgres:16-alpine
